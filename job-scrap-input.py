@@ -3,6 +3,12 @@ from bs4 import BeautifulSoup
 import math
 import pandas as pd
 from urllib.parse import quote_plus, urlencode, urlparse, parse_qs, urlunparse
+import time
+
+
+#  Resolved error 429 Too Many Requests by implementing a retry mechanism this is done because linkedIn has a rate limit to avoid scrapping
+#  Resolved error 403 Forbidden by adding a user agent to the headers
+
 
 HEADERS = {
     "User-Agent": (
@@ -87,8 +93,24 @@ def parse_job_details(job_id: str) -> dict:
     Fetch and parse comprehensive details of a LinkedIn job posting.
     """
     url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
-    resp = requests.get(url, headers=HEADERS)
-    resp.raise_for_status()
+    retries = 3
+
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, headers=HEADERS)
+            resp.raise_for_status()
+            break
+        except requests.exceptions.RequestException as e:
+            if hasattr(e.response, 'status_code') and e.response.status_code == 429:
+                wait_time = 5 * (attempt+1)
+                print(f"Rate limit exceeded, retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                raise e 
+    else:
+        print(f"Failed to fetch job details after {retries} attempts for JOB ID: {job_id}")
+
+
     soup = BeautifulSoup(resp.text, 'html.parser')
 
     data = {'job_id': job_id}
