@@ -1,10 +1,12 @@
 import requests
 from bs4 import BeautifulSoup
+from bs4.element import NavigableString, Tag
 import math
 import pandas as pd
 from urllib.parse import quote_plus, urlencode, urlparse, parse_qs, urlunparse
 import time
-
+import html
+import csv 
 
 #  Resolved error 429 Too Many Requests by implementing a retry mechanism this is done because linkedIn has a rate limit to avoid scrapping
 #  Resolved error 403 Forbidden by adding a user agent to the headers
@@ -167,6 +169,60 @@ def parse_job_details(job_id: str) -> dict:
     else:
         data['description'] = None
 
+    # --- Structured Full Text from show-more-less-html__markup ---
+    structured_details = []
+    # 1. Locate the clamp‐after‐5 div
+    div_markup = soup.select_one(
+        "section.show-more-less-html > div.show-more-less-html__markup"
+    )
+    if div_markup:
+        # 2. Grab its raw (entity-encoded) inner HTML
+        raw = div_markup.decode_contents()
+        # 3. Unescape HTML entities into real tags
+        unescaped = html.unescape(raw)
+        # 4. Re‐parse into a fresh BeautifulSoup tree
+        inner = BeautifulSoup(unescaped, "html.parser")
+
+        # 5. Iterate only the top-level children in order
+        for block in inner.find_all(recursive=False):
+            # plain text at top level
+            if isinstance(block, NavigableString):
+                txt = block.strip()
+                if txt:
+                    structured_details.append(txt)
+
+            # headings
+            elif block.name == "strong":
+                heading = block.get_text(strip=True)
+                if heading:
+                    structured_details.append(f"\n**{heading}**")
+
+            # paragraphs
+            elif block.name == "p":
+                para = block.get_text(strip=True)
+                if para:
+                    structured_details.append(para)
+
+            # bullet lists
+            elif block.name == "ul":
+                for li in block.find_all("li"):
+                    bullet = li.get_text(strip=True)
+                    if bullet:
+                        structured_details.append(f"- {bullet}")
+
+            # explicit line breaks
+            elif block.name == "br":
+                structured_details.append("\n")
+
+            # any other wrapper tags
+            else:
+                text = block.get_text(strip=True)
+                if text:
+                    structured_details.append(text)
+
+    data["all_details"] = "\n".join(structured_details).strip() or None
+
+
     return data
 
 
@@ -200,7 +256,7 @@ def scrape_linkedin(
     df = pd.DataFrame(all_jobs)
     safe_loc = location.replace(' ', '_').replace(',', '')
     filename = f"linkedin_jobs_{safe_loc}.csv"
-    df.to_csv(filename, index=False, encoding='utf-8')
+    df.to_csv(filename, index=False, encoding='utf-8',quoting=csv.QUOTE_ALL) # wrap every field in quotes because of the description field 
     print(f"Saved details to {filename}")
     return df
 
