@@ -1,6 +1,6 @@
 import html
 from bs4 import BeautifulSoup, NavigableString
-from utils import get_response
+from .utils import get_response
 
 JOB_API = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
 

@@ -1,7 +1,7 @@
 import pandas as pd
-from search import extract_job_ids
-from parser import parse_job_details
-from output import write_outputs
+from Scrapper.search import extract_job_ids
+from Scrapper.parser import parse_job_details
+from Scrapper.output import write_outputs
 
 
 def scrape_linkedin(location: str, keywords: str = 'Python (Programming Language)',

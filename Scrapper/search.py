@@ -1,6 +1,6 @@
 import math
 import pandas as pd
-from utils import get_response, build_search_url
+from .utils import get_response, build_search_url
 from bs4 import BeautifulSoup
 
 FILTER_PARAMS = {
