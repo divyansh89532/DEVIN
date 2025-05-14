@@ -176,49 +176,61 @@ def parse_job_details(job_id: str) -> dict:
         "section.show-more-less-html > div.show-more-less-html__markup"
     )
     if div_markup:
-        # 2. Grab its raw (entity-encoded) inner HTML
-        raw = div_markup.decode_contents()
-        # 3. Unescape HTML entities into real tags
-        unescaped = html.unescape(raw)
-        # 4. Re‐parse into a fresh BeautifulSoup tree
-        inner = BeautifulSoup(unescaped, "html.parser")
+        # # 2. Grab its raw (entity-encoded) inner HTML
+        # raw = div_markup.decode_contents()
+        # # 3. Unescape HTML entities into real tags
+        # unescaped = html.unescape(raw)
+        # # 4. Re‐parse into a fresh BeautifulSoup tree
+        # inner = BeautifulSoup(unescaped, "html.parser")
 
-        # 5. Iterate only the top-level children in order
-        for block in inner.find_all(recursive=False):
-            # plain text at top level
-            if isinstance(block, NavigableString):
-                txt = block.strip()
-                if txt:
-                    structured_details.append(txt)
+        # # 5. Iterate only the top-level children in order
+        # for block in inner.find_all(recursive=False):
+        #     # plain text at top level
+        #     if isinstance(block, NavigableString):
+        #         txt = block.strip()
+        #         if txt:
+        #             structured_details.append(txt)
+            
+        #     elif block.name in ['h2', 'h3', 'h4', 'h5', 'h6']:
+        #         heading = block.get_text(strip=True)
+        #         if heading:
+        #             structured_details.append(f"\n**{heading}**")
+        #     elif block.name == "strong":
+        #         heading = block.get_text(strip=True)
+        #         if heading:
+        #             structured_details.append(f"\n**{heading}**")
 
-            # headings
-            elif block.name == "strong":
-                heading = block.get_text(strip=True)
-                if heading:
-                    structured_details.append(f"\n**{heading}**")
+        #     # paragraphs
+        #     elif block.name == "p":
+        #         para = block.get_text(strip=True)
+        #         if para:
+        #             structured_details.append(para)
 
-            # paragraphs
-            elif block.name == "p":
-                para = block.get_text(strip=True)
-                if para:
-                    structured_details.append(para)
+        #     # bullet lists
+        #     elif block.name == "ul":
+        #         for li in block.find_all("li"):
+        #             bullet = li.get_text(strip=True)
+        #             if bullet:
+        #                 structured_details.append(f"- {bullet}")
 
-            # bullet lists
-            elif block.name == "ul":
-                for li in block.find_all("li"):
-                    bullet = li.get_text(strip=True)
-                    if bullet:
-                        structured_details.append(f"- {bullet}")
+        #     # explicit line breaks
+        #     elif block.name == "br":
+        #         structured_details.append(" ")
 
-            # explicit line breaks
-            elif block.name == "br":
-                structured_details.append("\n")
-
-            # any other wrapper tags
+        #     # any other wrapper tags
+        #     else:
+        #         text = block.get_text(strip=True)
+        #         if text:
+        #             structured_details.append(text)
+        for tag in div_markup.find_all(['p', 'li', 'h2', 'h3', 'h4', 'h5', 'h6'],recursive=True):
+            txt = tag.get_text(strip=True)
+            if not txt: continue
+            if tag.name in ['h1','h2','h3','h4','h5','h6']:
+                structured_details.append(f"\n**{txt}**")
+            elif tag.name == 'li':
+                structured_details.append(f"- {txt}")
             else:
-                text = block.get_text(strip=True)
-                if text:
-                    structured_details.append(text)
+                structured_details.append(txt)
 
     data["all_details"] = "\n".join(structured_details).strip() or None
 
@@ -255,9 +267,41 @@ def scrape_linkedin(
     # Create DataFrame & save
     df = pd.DataFrame(all_jobs)
     safe_loc = location.replace(' ', '_').replace(',', '')
+
+        # 1) Replace real newlines with literal “\n”
+    for col in ['description', 'all_details']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.replace('\n', '\\n')
+
+
     filename = f"linkedin_jobs_{safe_loc}.csv"
     df.to_csv(filename, index=False, encoding='utf-8',quoting=csv.QUOTE_ALL) # wrap every field in quotes because of the description field 
     print(f"Saved details to {filename}")
+
+
+    # 3) Write JSON‑lines
+    json_filename = f"linkedin_jobs_{safe_loc}.jsonl"
+    # each line is one JSON object, full text (with real \n) still intact
+    df.to_json(
+        json_filename,
+        orient='records',
+        lines=True,
+        force_ascii=False
+    )
+    print(f"Saved JSON-Lines → {json_filename}")
+
+    # 4) Write XLSX
+    xlsx_filename = f"linkedin_jobs_{safe_loc}.xlsx"
+    with pd.ExcelWriter(xlsx_filename, engine='openpyxl') as writer:
+        # rewind description/all_details to real newlines for Excel
+        df_excel = df.copy()
+        for col in ['description', 'all_details']:
+            if col in df_excel.columns:
+                df_excel[col] = df_excel[col].astype(str).str.replace('\\\\n', '\n')
+        df_excel.to_excel(writer, index=False, sheet_name='Jobs')
+        # optionally you could auto‐adjust column widths or set wrap‐text via openpyxl here
+    print(f"Saved Excel → {xlsx_filename}")
+
     return df
 
 if __name__ == '__main__':
